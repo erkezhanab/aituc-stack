@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { absPath } from "@/lib/files";
+import { MIME, kindOf, openObject } from "@/lib/files";
 
 /** Serves a submission: converted PDF by default, `?v=original` for the uploaded file. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -17,14 +15,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!allowed) return new NextResponse("Forbidden", { status: 403 });
 
   const original = req.nextUrl.searchParams.get("v") === "original";
-  const rel = original ? s.originalPath : s.pdfPath;
-  const buf = await fs.readFile(absPath(rel));
-  const isPdf = path.extname(rel).toLowerCase() === ".pdf";
+  const key = original ? s.originalPath : s.pdfPath;
+  const kind = kindOf(key);
   const name = original ? s.originalName : s.originalName.replace(/\.docx$/i, ".pdf");
-  return new NextResponse(new Uint8Array(buf), {
+
+  // Private bucket: the object is fetched with a short-lived signed URL and streamed through.
+  const obj = await openObject(key);
+  if (!obj) return new NextResponse("Not found", { status: 404 });
+  return new NextResponse(obj.body, {
     headers: {
-      "Content-Type": isPdf ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "Content-Disposition": `${isPdf ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
+      "Content-Type": MIME[kind],
+      ...(obj.size ? { "Content-Length": obj.size } : {}),
+      "Content-Disposition": `${kind === "pdf" ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(name)}`,
       "Cache-Control": "private, max-age=0",
     },
   });

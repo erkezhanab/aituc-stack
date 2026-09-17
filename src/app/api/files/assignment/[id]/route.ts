@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { absPath } from "@/lib/files";
+import { openObject } from "@/lib/files";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await getSession();
@@ -15,10 +14,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!a) return new NextResponse("Not found", { status: 404 });
   const allowed = a.subject.teacherId === me.id || a.subject.enrollments.length > 0;
   if (!allowed) return new NextResponse("Forbidden", { status: 403 });
-  const buf = await fs.readFile(absPath(a.filePath));
-  return new NextResponse(new Uint8Array(buf), {
+
+  // Private bucket: the object is fetched with a short-lived signed URL and streamed through.
+  const obj = await openObject(a.filePath);
+  if (!obj) return new NextResponse("Not found", { status: 404 });
+  return new NextResponse(obj.body, {
     headers: {
       "Content-Type": "application/pdf",
+      ...(obj.size ? { "Content-Length": obj.size } : {}),
       "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(a.fileName)}`,
       "Cache-Control": "private, max-age=0",
     },

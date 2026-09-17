@@ -3,8 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Supabase: pooled (Transaction pooler, port 6543) for the app runtime,
+  // direct (Session pooler / direct, port 5432) for `prisma migrate`.
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -49,7 +52,7 @@ model Assignment {
   title       String
   description String
   deadline    DateTime
-  filePath    String       // PDF
+  filePath    String       // Supabase Storage object key, e.g. assignments/<file>.pdf
   fileName    String
   createdAt   DateTime     @default(now())
   submissions Submission[]
@@ -62,8 +65,8 @@ model Submission {
   studentId     String
   student       User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   originalName  String
-  originalPath  String    // uploaded file as-is (pdf or docx)
-  pdfPath       String    // always a PDF (converted if docx)
+  originalPath  String    // Storage key of the uploaded file as-is (pdf or docx)
+  pdfPath       String    // Storage key of the PDF (converted if docx)
   submittedAt   DateTime  @default(now())
   status        String    // "on_time" | "late"
   grade         Grade?

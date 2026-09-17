@@ -5,6 +5,7 @@ import { useT } from "@/i18n/client";
 export function FormMessage({ state }: { state: ActionState }) {
   const t = useT();
   if (!state) return null;
+  if (state.error === undefined && state.ok === undefined) return null; // field-level errors are rendered inline
   if (state.error !== undefined)
     return <p className="stripe border-l-danger bg-danger-soft/60 px-3 py-1.5 text-[13px] text-danger">{t(state.error, state.params)}</p>;
   return (

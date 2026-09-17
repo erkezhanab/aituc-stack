@@ -1,21 +1,29 @@
-import { promises as fs } from "fs";
 import path from "path";
+import os from "os";
+import { promises as fs } from "fs";
 import { randomBytes } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import mammoth from "mammoth";
 import { PDFDocument, StandardFonts } from "pdf-lib";
+import { STORAGE_BUCKET, supabaseAdmin } from "@/lib/supabase";
 
 const execFileAsync = promisify(execFile);
 
-export const UPLOAD_ROOT = path.join(process.cwd(), "uploads");
 export const MAX_ASSIGNMENT_SIZE = 20 * 1024 * 1024; // 20 MB
 export const MAX_SUBMISSION_SIZE = 20 * 1024 * 1024;
+/** Lifetime of the signed URLs used to read private objects (seconds). */
+export const SIGNED_URL_TTL = 60;
 
 const PDF_MAGIC = Buffer.from("%PDF-");
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // docx is a zip
 
 export type Kind = "pdf" | "docx";
+
+export const MIME: Record<Kind, string> = {
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
 
 /** Detect file type by extension + magic bytes (never trust the MIME type alone). */
 export function detectKind(name: string, buf: Buffer): Kind | null {
@@ -25,24 +33,50 @@ export function detectKind(name: string, buf: Buffer): Kind | null {
   return null;
 }
 
+export function kindOf(key: string): Kind {
+  return path.extname(key).toLowerCase() === ".pdf" ? "pdf" : "docx";
+}
+
 export function safeName(original: string) {
   const base = path.basename(original).replace(/[^\w.\-а-яА-ЯёЁ ]+/g, "_").slice(0, 80);
   return `${Date.now()}-${randomBytes(4).toString("hex")}-${base}`;
 }
 
-export async function saveBuffer(subdir: string, name: string, buf: Buffer) {
-  const dir = path.join(UPLOAD_ROOT, subdir);
-  await fs.mkdir(dir, { recursive: true });
-  const rel = path.join(subdir, name);
-  await fs.writeFile(path.join(UPLOAD_ROOT, rel), buf);
-  return rel;
+/* ---------------------------------- Supabase Storage ---------------------------------- */
+
+/**
+ * Upload a buffer to the private bucket. Returns the object key (`<folder>/<name>`), which is
+ * what the DB stores in `filePath` / `originalPath` / `pdfPath`.
+ */
+export async function saveBuffer(folder: "assignments" | "submissions", name: string, buf: Buffer, kind: Kind) {
+  const key = `${folder}/${name}`;
+  const { error } = await supabaseAdmin().storage.from(STORAGE_BUCKET).upload(key, buf, {
+    contentType: MIME[kind],
+    upsert: false,
+  });
+  if (error) throw new Error(`storage upload failed for ${key}: ${error.message}`);
+  return key;
 }
 
-export function absPath(rel: string) {
-  const p = path.resolve(UPLOAD_ROOT, rel);
-  if (!p.startsWith(UPLOAD_ROOT + path.sep)) throw new Error("bad path");
-  return p;
+/** Short-lived signed URL for a private object. */
+export async function signedUrl(key: string) {
+  const { data, error } = await supabaseAdmin().storage.from(STORAGE_BUCKET).createSignedUrl(key, SIGNED_URL_TTL);
+  if (error || !data) throw new Error(`cannot sign ${key}: ${error?.message}`);
+  return data.signedUrl;
 }
+
+/**
+ * Stream a private object through the server (so access control, filename and inline display
+ * stay under our control and the browser never talks to Supabase directly).
+ */
+export async function openObject(key: string): Promise<{ body: ReadableStream<Uint8Array>; size: string | null } | null> {
+  const res = await fetch(await signedUrl(key), { cache: "no-store" });
+  if (res.status === 404 || res.status === 400) return null;
+  if (!res.ok || !res.body) throw new Error(`storage fetch failed for ${key}: ${res.status}`);
+  return { body: res.body, size: res.headers.get("content-length") };
+}
+
+/* ------------------------------------ DOCX → PDF ------------------------------------- */
 
 async function findSoffice(): Promise<string | null> {
   const candidates = [
@@ -64,29 +98,28 @@ async function findSoffice(): Promise<string | null> {
 }
 
 /**
- * Convert a DOCX (already stored at relDocx) to PDF next to it.
- * 1) LibreOffice headless if available (faithful rendering);
- * 2) fallback: mammoth text extraction -> simple PDF via pdf-lib.
+ * Convert a DOCX buffer to a PDF buffer.
+ * 1) LibreOffice headless if available (faithful rendering) — it only works on files, so the
+ *    document is written to a scratch dir in the OS temp folder and removed afterwards;
+ * 2) fallback: mammoth text extraction -> simple PDF via pdf-lib (pure in-memory).
  */
-export async function convertDocxToPdf(relDocx: string): Promise<string> {
-  const src = absPath(relDocx);
-  const outDir = path.dirname(src);
-  const target = src.replace(/\.docx$/i, ".pdf");
-
+export async function convertDocxToPdf(docx: Buffer): Promise<Buffer> {
   const soffice = await findSoffice();
   if (soffice) {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aituc-docx-"));
     try {
-      await execFileAsync(soffice, ["--headless", "--convert-to", "pdf", "--outdir", outDir, src], {
-        timeout: 90_000,
-      });
-      await fs.access(target);
-      return path.relative(UPLOAD_ROOT, target);
+      const src = path.join(dir, "in.docx");
+      await fs.writeFile(src, docx);
+      await execFileAsync(soffice, ["--headless", "--convert-to", "pdf", "--outdir", dir, src], { timeout: 90_000 });
+      return await fs.readFile(path.join(dir, "in.pdf"));
     } catch (e) {
       console.warn("[convert] soffice failed, falling back to text render:", e);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
     }
   }
 
-  const { value: text } = await mammoth.extractRawText({ path: src });
+  const { value: text } = await mammoth.extractRawText({ buffer: docx });
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const size = 11;
@@ -123,8 +156,7 @@ export async function convertDocxToPdf(relDocx: string): Promise<string> {
     page.drawText(line, { x: margin, y, size, font });
     y -= lineHeight;
   }
-  await fs.writeFile(target, await pdf.save());
-  return path.relative(UPLOAD_ROOT, target);
+  return Buffer.from(await pdf.save());
 }
 
 const translit: Record<string, string> = Object.fromEntries(

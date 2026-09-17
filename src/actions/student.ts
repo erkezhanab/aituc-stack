@@ -43,16 +43,19 @@ export async function submitAction(_prev: ActionState, formData: FormData): Prom
   const kind = detectKind(file.name, buf);
   if (!kind) return { error: "err.pdfOrDocx" };
 
-  const originalPath = await saveBuffer("submissions", safeName(file.name), buf);
-  let pdfPath = originalPath;
+  // Convert first so a failed conversion leaves nothing behind in Storage.
+  let pdfBuf: Buffer | null = null;
   if (kind === "docx") {
     try {
-      pdfPath = await convertDocxToPdf(originalPath);
+      pdfBuf = await convertDocxToPdf(buf);
     } catch (e) {
       console.error("[convert]", e);
       return { error: "err.convertFailed" };
     }
   }
+  const name = safeName(file.name);
+  const originalPath = await saveBuffer("submissions", name, buf, kind);
+  const pdfPath = pdfBuf ? await saveBuffer("submissions", name.replace(/\.docx$/i, ".pdf"), pdfBuf, "pdf") : originalPath;
 
   const now = new Date();
   const status = now > assignment.deadline ? "late" : "on_time";

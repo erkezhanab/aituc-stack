@@ -3,20 +3,19 @@
 import bcrypt from "bcryptjs";
 import { timingSafeEqual } from "crypto";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { createSession, destroySession, homeFor, type Role } from "@/lib/auth";
+import { createSession, destroySession, homeFor } from "@/lib/auth";
+import { formDataToObject, loginSchema, registerSchema, validate, type FieldErrors } from "@/lib/validation/auth";
 import type { Params } from "@/i18n";
 
-/** Messages are i18n keys (see src/i18n/*.json); the client translates them. */
+/**
+ * Messages are i18n keys (see src/i18n/*.json); the client translates them.
+ * `error` is a form-level message; `fieldErrors` are shown inline under the named field.
+ */
 export type ActionState =
-  | { error: string; params?: Params; ok?: undefined }
-  | { ok: string; params?: Params; error?: undefined }
+  | { error?: string; fieldErrors?: FieldErrors; params?: Params; ok?: undefined }
+  | { ok: string; params?: Params; error?: undefined; fieldErrors?: undefined }
   | undefined;
-
-const emailSchema = z.string().trim().toLowerCase().email("err.invalidEmail");
-const passwordSchema = z.string().min(6, "err.passwordMin");
-const nameSchema = z.string().trim().min(2, "err.nameRequired");
 
 function safeEqual(a: string, b: string) {
   const ba = Buffer.from(a), bb = Buffer.from(b);
@@ -24,13 +23,12 @@ function safeEqual(a: string, b: string) {
 }
 
 export async function loginAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const role = formData.get("role") as Role;
-  const email = emailSchema.safeParse(formData.get("email"));
-  const password = String(formData.get("password") ?? "");
-  if (!email.success) return { error: email.error.issues[0].message };
-  if (role !== "teacher" && role !== "student") return { error: "err.chooseRole" };
+  // Server-side re-validation: the client check is UX only.
+  const v = validate(loginSchema, formDataToObject(formData));
+  if (v.errors) return { fieldErrors: v.errors };
+  const { role, email, password } = v.data;
 
-  const user = await prisma.user.findUnique({ where: { email: email.data } });
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !(await bcrypt.compare(password, user.passwordHash))) return { error: "err.badCredentials" };
   if (user.role !== role) return { error: role === "teacher" ? "err.accountIsStudent" : "err.accountIsTeacher" };
 
@@ -49,22 +47,16 @@ export async function logoutAction() {
  * TEACHER_INVITE_CODE (from .env) — otherwise no teacher account is created.
  */
 export async function registerAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const role = formData.get("role");
-  if (role !== "teacher" && role !== "student") return { error: "err.chooseRole" };
-
-  const parsed = z
-    .object({ name: nameSchema, email: emailSchema, password: passwordSchema })
-    .safeParse({ name: formData.get("name"), email: formData.get("email"), password: formData.get("password") });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { name, email, password } = parsed.data;
+  const v = validate(registerSchema, formDataToObject(formData));
+  if (v.errors) return { fieldErrors: v.errors };
+  const { role, name, email, password, inviteCode } = v.data;
 
   if (role === "teacher") {
     const expected = process.env.TEACHER_INVITE_CODE?.trim();
-    const given = String(formData.get("inviteCode") ?? "").trim();
-    if (!expected || !given || !safeEqual(given, expected)) return { error: "err.badInviteCode" };
+    if (!expected || !inviteCode || !safeEqual(inviteCode, expected)) return { fieldErrors: { inviteCode: "err.badInviteCode" } };
   }
 
-  if (await prisma.user.findUnique({ where: { email } })) return { error: "err.userExists" };
+  if (await prisma.user.findUnique({ where: { email } })) return { fieldErrors: { email: "err.userExists" } };
 
   await prisma.user.create({ data: { name, email, role, passwordHash: await bcrypt.hash(password, 10) } });
   redirect(`/login?registered=1&role=${role}`);

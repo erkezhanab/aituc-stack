@@ -49,7 +49,7 @@ export async function createAssignmentAction(_prev: ActionState, formData: FormD
   if (detectKind(file.name, buf) !== "pdf") return { error: "err.mustBePdf" };
 
   if (!(await ownSubject(parsed.data.subjectId, me.id))) return { error: "err.noAccess" };
-  const rel = await saveBuffer("assignments", safeName(file.name), buf);
+  const rel = await saveBuffer("assignments", safeName(file.name), buf, "pdf");
   const a = await prisma.assignment.create({
     data: { ...parsed.data, deadline, filePath: rel, fileName: file.name },
   });
