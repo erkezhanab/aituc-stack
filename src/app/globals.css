@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- Tokens. Neutral-first: the accent is reserved for primary CTAs, links and active nav. ---- */
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --surface-3: #e9e9eb;
+  --line: #e4e4e7;      /* default 1px border */
+  --line-2: #d4d4d8;    /* stronger border: inputs, nested blocks */
+  --fg: #09090b;
+  --fg-2: #3f3f46;
+  --muted: #71717a;
+  --accent: #2f5bea;
+  --accent-hover: #244ccc;
+  --accent-soft: #e8eefc;
+  --accent-fg: #ffffff;
+  --primary: #09090b;       /* solid CTA (near-black in light) */
+  --primary-hover: #27272a;
+  --primary-fg: #ffffff;
+  --warn: #c2410c;
+  --warn-soft: #ffedd5;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --ok: #15803d;
+  --ok-soft: #dcfce7;
+  --gold: #a16207;
+  --gold-soft: #fef3c7;
+  color-scheme: light;
+}
+.dark {
+  --bg: #0a0a0b;
+  --surface: #111113;
+  --surface-2: #18181b;
+  --surface-3: #232328;
+  --line: #232328;
+  --line-2: #34343b;
+  --fg: #fafafa;
+  --fg-2: #d4d4d8;
+  --muted: #8b8b94;
+  --accent: #6d8dff;
+  --accent-hover: #86a0ff;
+  --accent-soft: #16214a;
+  --accent-fg: #0a0a0b;
+  --primary: #fafafa;
+  --primary-hover: #e4e4e7;
+  --primary-fg: #09090b;
+  --warn: #fb923c;
+  --warn-soft: #3a1f0b;
+  --danger: #f87171;
+  --danger-soft: #3f1515;
+  --ok: #4ade80;
+  --ok-soft: #10331c;
+  --gold: #facc15;
+  --gold-soft: #3a2f0a;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Shape hierarchy: buttons 3px · inputs 4px · cards 8px · badges pill */
+  --radius-btn: 3px;
+  --radius-input: 4px;
+  --radius-card: 8px;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.025em; }
+@utility display { font-family: var(--font-display); letter-spacing: -0.02em; }
+::selection { background: var(--accent-soft); }
+
+@utility card { @apply rounded-[var(--radius-card)] border border-line bg-surface; }
+@utility btn { @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--radius-btn)] px-3 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-1 focus-visible:ring-offset-bg; }
+@utility badge { @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-px text-[11px] font-medium leading-4; }
+@utility chip { @apply inline-flex h-7 items-center rounded-[var(--radius-btn)] border px-2.5 text-xs font-medium transition-colors; }
+
+@layer components {
+  .card-pad { @apply card p-4; }
+  .card-hover { @apply transition-colors hover:border-line-2; }
+  .btn-primary { @apply btn bg-primary text-primary-fg hover:bg-primary-hover; }
+  .btn-accent { @apply btn bg-accent text-accent-fg hover:bg-accent-hover; }
+  .btn-secondary { @apply btn border border-line-2 bg-surface text-fg hover:bg-surface-2; }
+  .btn-ghost { @apply btn text-muted hover:bg-surface-2 hover:text-fg; }
+  .input { @apply h-8 w-full rounded-[var(--radius-input)] border border-line-2 bg-surface px-2.5 text-[13px] text-fg outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-2 focus:ring-accent/25; }
+  textarea.input { @apply h-auto py-1.5; }
+  .label { @apply mb-1 block text-[11px] font-medium text-muted; }
+  .badge-neutral { @apply badge border border-line-2 bg-surface text-fg-2; }
+  .badge-solid { @apply badge bg-surface-3 text-fg; }
+  .badge-warn { @apply badge bg-warn-soft text-warn; }
+  .badge-danger { @apply badge bg-danger-soft text-danger; }
+  .badge-ok { @apply badge bg-ok-soft text-ok; }
+  .badge-accent { @apply badge bg-accent-soft text-accent; }
+  .badge-gold { @apply badge bg-gold-soft text-gold; }
+  .chip-on { @apply chip border-fg bg-fg text-bg; }
+  .chip-off { @apply chip border-line-2 bg-surface text-fg-2 hover:bg-surface-2; }
+  .table { @apply w-full text-[13px]; }
+  .table th { @apply h-9 border-b border-line bg-surface-2 px-3 text-left text-[11px] font-medium uppercase tracking-wide text-muted; }
+  .table td { @apply border-b border-line px-3 py-2 align-middle; }
+  .table tbody tr:last-child td { @apply border-b-0; }
+  .table tbody tr { @apply transition-colors hover:bg-surface-2/70; }
+  .h1 { @apply text-[26px] font-bold leading-tight md:text-[30px]; }
+  .h2 { @apply text-[15px] font-semibold; }
+  .eyebrow { @apply text-[11px] font-medium uppercase tracking-[0.08em] text-muted; }
+  .kbd { @apply rounded-[3px] border border-line-2 bg-surface-2 px-1 font-mono text-[11px]; }
+  .stat { @apply card p-4; }
+  .stat-value { @apply display text-[28px] font-bold leading-none; }
+  .icon-btn { @apply inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-btn)] border border-line-2 bg-surface text-muted transition-colors hover:bg-surface-2 hover:text-fg; }
+  .nav-link { @apply inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-btn)] px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-fg; }
+  .nav-link-active { @apply bg-surface-2 text-fg shadow-[inset_0_-2px_0_0_var(--accent)]; }
+  .link { @apply font-medium text-accent hover:underline; }
+  /* Status stripe on list rows / cards */
+  .stripe { @apply border-l-[3px]; }
+}
+
+.pdf-scroll { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }

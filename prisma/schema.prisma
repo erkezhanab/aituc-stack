@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  role          String    // "teacher" | "student"
+  passwordHash  String
+  createdAt     DateTime  @default(now())
+
+  subjects      Subject[]      @relation("TeacherSubjects")
+  enrollments   Enrollment[]
+  submissions   Submission[]
+}
+
+model Subject {
+  id          String       @id @default(cuid())
+  title       String
+  joinCode    String       @unique
+  teacherId   String
+  teacher     User         @relation("TeacherSubjects", fields: [teacherId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+  enrollments Enrollment[]
+  createdAt   DateTime     @default(now())
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  subjectId String
+  studentId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([subjectId, studentId])
+}
+
+model Assignment {
+  id          String       @id @default(cuid())
+  subjectId   String
+  subject     Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  deadline    DateTime
+  filePath    String       // PDF
+  fileName    String
+  createdAt   DateTime     @default(now())
+  submissions Submission[]
+}
+
+model Submission {
+  id            String    @id @default(cuid())
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  originalName  String
+  originalPath  String    // uploaded file as-is (pdf or docx)
+  pdfPath       String    // always a PDF (converted if docx)
+  submittedAt   DateTime  @default(now())
+  status        String    // "on_time" | "late"
+  grade         Grade?
+
+  @@unique([assignmentId, studentId])
+}
+
+model Grade {
+  id           String     @id @default(cuid())
+  submissionId String     @unique
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  score        Int        // 1..12
+  comment      String?
+  gradedAt     DateTime   @default(now())
+}
